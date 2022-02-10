@@ -107,7 +107,7 @@ def input_data(field_data, licor_data, CO2_or_CH4):
     fluxes = [] # set of flux objects
 
     # find relevant data indices in field data file
-    collar_regex = r"collar|name"
+    collar_regex = r"collar$|name"
     l_or_d_regex = r"light[ -_]or[ -_]dark"
     start_time_regex = r"start[ -_]time"
     end_time_regex = r"end[ -_]time"
@@ -160,34 +160,34 @@ def input_data(field_data, licor_data, CO2_or_CH4):
         index = 9
 
     # go line by line in LICOR data, adding relevant times and concentrations to approrpiate fluxes
-    for line in f:
-        x = line.split(",")
-        for k in range(len(x)):
-            x[k] = x[k].strip(' \t\n\r')
-        if in_flux == 0:    # if current line in LICOR data isn't in a flux, check to see if it's the start time of the next flux
-            if x[6] == fluxes[i].start_time:
-                in_flux = 1
-                start_seconds = float(x[1])
+    for flux in fluxes:
+        f.seek(6)
+        print(flux.name)
+        for line in f:
+            x = line.split(",")
+            for k in range(len(x)):
+                x[k] = x[k].strip(' \t\n\r')
+            if in_flux == 0:    # if current line in LICOR data isn't in a flux, check to see if it's the start time of the next flux
+                if x[6] == flux.start_time:
+                    in_flux = 1
+                    start_seconds = float(x[1])
+                    times.append(float(x[1]) - start_seconds)
+                    CH4.append(float(x[index]))
+            elif in_flux == 1:  # if current line in LICOR data is in a flux, append the time and gas concentration to flux
                 times.append(float(x[1]) - start_seconds)
                 CH4.append(float(x[index]))
-        elif in_flux == 1:  # if current line in LICOR data is in a flux, append the time and gas concentration to flux
-            times.append(float(x[1]) - start_seconds)
-            CH4.append(float(x[index]))
-            if x[6] == fluxes[i].end_time:  # if current line in LICOR data is the end time of the current flux, finalize times and concentrations sets and stop
-                fluxes[i].times = times
-                fluxes[i].CH4 = CH4
-                fluxes[i].pruned_times = times
-                fluxes[i].pruned_CH4 = CH4
-                fluxes[i].original_length = len(times)
+                if x[6] == flux.end_time:  # if current line in LICOR data is the end time of the current flux, finalize times and concentrations sets and stop
+                    flux.times = times
+                    flux.CH4 = CH4
+                    flux.pruned_times = times
+                    flux.pruned_CH4 = CH4
+                    flux.original_length = len(times)
 
-                times = []
-                CH4 = []
-                in_flux = 0
-                start_seconds = 0
-                if i == len(fluxes) - 1:
-                    break
-                else:
-                    i += 1    
+                    times = []
+                    CH4 = []
+                    in_flux = 0
+                    start_seconds = 0 
+                    continue
     f.close()
     return fluxes
 
@@ -386,8 +386,14 @@ def outputData(fluxes, site, date, CO2_or_CH4, Vol):
     worksheet.set_column(0, 0, len("Rate of change (CH4 [ppm/min])"))
     
     # create page for each flux, pages give a detailed breakdown of each fluxes data sets as well as the values that have been cut
+    worksheets = {}
     for flux in fluxes:
-        worksheet = workbook.add_worksheet(flux.name)
+        if flux.name not in worksheets:
+            worksheet = workbook.add_worksheet(flux.name)
+            worksheets[flux.name] = 1
+        else:
+            worksheets[flux.name] += 1
+            worksheet = workbook.add_worksheet(flux.name + " (%s)" %(str(worksheets[flux.name])))
         worksheet.write_row(0, 0, ["Name", flux.name])
         worksheet.write_row(1, 0, ["RSQ", flux.RSQ, '', '', "Chamber volume (L)", Vol])
         worksheet.write_row(2, 0, ["Rate of change (CH4 [ppm/min]", flux.RoC, '', '', "Air temp (K)", flux.temp])
